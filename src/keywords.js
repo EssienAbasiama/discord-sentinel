@@ -9,7 +9,6 @@ const KEYWORDS = [
   "frontend developer",
   "react developer",
   "javascript developer",
-  "hello",
   // Add more below 👇
 ];
 

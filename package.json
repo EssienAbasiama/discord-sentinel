@@ -1,17 +1,21 @@
 {
-  "name": "discord-selfbot",
+  "name": "discord-sentinel",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Discord selfbot keyword notifier - multi-user dashboard",
+  "main": "server/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "client": "cd client && npm start",
+    "install:all": "npm install && cd client && npm install"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "debug": "^4.4.3",
-    "discord.js-selfbot-v13": "^3.7.1",
-    "dotenv": "^17.4.2"
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3",
+    "cors": "^2.8.5",
+    "discord.js-selfbot-v13": "^2.15.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.0"
   }
 }

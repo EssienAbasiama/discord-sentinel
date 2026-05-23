@@ -1,101 +1,129 @@
-# 🔔 Discord Selfbot — Keyword Notifier
+# ⬡ Discord Sentinel — Multi-User Dashboard
 
-Monitors a Discord server for specific keywords and sends you instant alerts in your private channel.
+A full-stack web app for monitoring Discord servers with keyword alerts and member join tracking — with per-user isolated dashboards, database persistence, and a sleek dark UI.
 
----
+## Architecture
 
-## ⚙️ Setup
+```
+discord-sentinel/
+├── server/              ← Express API + Bot Manager
+│   ├── index.js         ← Main server entry
+│   ├── auth.js          ← JWT authentication
+│   ├── botManager.js    ← Discord selfbot instances
+│   └── routes/
+│       ├── authRoutes.js
+│       ├── botRoutes.js
+│       └── logRoutes.js
+├── db/
+│   └── database.js      ← SQLite schema & connection
+└── client/              ← React frontend
+    └── src/
+        ├── pages/
+        │   ├── AuthPage.js     ← Login/Register + onboarding
+        │   ├── Dashboard.js    ← Bot overview + setup wizard
+        │   ├── BotDetail.js    ← Manage servers & keywords
+        │   └── LogsPage.js     ← Full activity log
+        ├── components/
+        │   └── Layout.js       ← Sidebar navigation
+        └── contexts/
+            └── AuthContext.js  ← Auth state + API helper
+```
+
+## Quick Start (Development)
 
 ### 1. Install dependencies
+
 ```bash
+# Backend
 npm install
+
+# Frontend
+cd client && npm install && cd ..
 ```
 
-### 2. Create your `.env` file
-```bash
-cp .env.example .env
-```
-
-Then fill in the values:
-
-```env
-TOKEN=your_new_discord_user_token
-MONITOR_SERVER_ID=the_server_you_want_to_watch
-NOTIFY_CHANNEL_ID=your_private_channel_id
-```
-
----
-
-## 🔑 How to Get Your IDs
-
-### User Token
-1. Open Discord in your **browser**
-2. Press `F12` → **Network** tab
-3. Filter requests by `api`
-4. Click any channel or send a message
-5. Find a request → **Headers** → look for `Authorization`
-6. That value is your token
-
-### Server / Channel IDs
-1. In Discord, go to **Settings → Advanced → Enable Developer Mode**
-2. Right-click any **server** → "Copy Server ID"
-3. Right-click any **channel** → "Copy Channel ID"
-
----
-
-## 📝 Adding / Editing Keywords
-
-Open `src/keywords.js` and update the array:
-
-```js
-const KEYWORDS = [
-  "website development",
-  "engineer",
-  "your custom keyword here",
-];
-```
-
----
-
-## 🚀 Run the Bot
+### 2. Start the backend
 
 ```bash
-node index.js
+npm start
+# API runs on http://localhost:4000
+```
+
+### 3. Start the frontend
+
+```bash
+cd client && npm start
+# UI runs on http://localhost:3000
+```
+
+Open http://localhost:3000 → Register → Add Bot → Configure → Start!
+
+---
+
+## Deploying to Production
+
+### Option A: Single-server (Recommended)
+
+Build the React app and serve it from Express:
+
+```bash
+cd client && npm run build && cd ..
+NODE_ENV=production PORT=4000 node server/index.js
+```
+
+### Option B: Railway / Render / Fly.io
+
+Add a `Procfile`:
+```
+web: cd client && npm run build && cd .. && NODE_ENV=production node server/index.js
+```
+
+Set environment variables:
+```
+PORT=4000
+NODE_ENV=production
+CLIENT_ORIGIN=https://your-domain.com
+JWT_SECRET=your-super-secret-jwt-key-change-this
+```
+
+### Option C: VPS with PM2
+
+```bash
+npm install -g pm2
+cd client && npm run build && cd ..
+pm2 start server/index.js --name sentinel
+pm2 save
 ```
 
 ---
 
-## 📁 Project Structure
+## Environment Variables
 
-```
-discord-selfbot/
-├── index.js                # Entry point
-├── src/
-│   ├── keywords.js         # Your keyword list
-│   ├── messageHandler.js   # Scans messages for keywords
-│   └── notifier.js         # Formats notification messages
-├── .env                    # Your secrets (never commit this)
-├── .env.example            # Template
-└── package.json
-```
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `4000` | Server port |
+| `NODE_ENV` | `development` | Set to `production` for deploy |
+| `CLIENT_ORIGIN` | `http://localhost:3000` | CORS allowed origin |
+| `JWT_SECRET` | (built-in dev default) | **Change this in production!** |
+
+> No `.env` needed for development. All user data (tokens, server IDs, keywords) is stored in `db/sentinel.db` (SQLite).
 
 ---
 
-## 🔔 Sample Notification
+## Database
 
-```
-🔔 Keyword Alert!
-━━━━━━━━━━━━━━━━━━━━
-📌 Keywords matched: `engineer`, `web development`
-🏠 Server: Some Cool Server
-💬 Channel: #general
-👤 Sent by: someuser#1234 (ID: `987654321`)
-🕐 Time: Jan 15, 2025, 3:42 PM
-📝 Message:
-> Looking for a web development engineer to join our team...
-🔗 Jump to message
-```
+SQLite file at `db/sentinel.db`. Tables:
+
+- `users` — accounts
+- `user_bots` — Discord token + notify channel per user
+- `monitored_servers` — server IDs per bot
+- `keywords` — keywords per bot
+- `logs` — activity history
 
 ---
 
-> ⚠️ **Reminder:** Using selfbots violates Discord's ToS. Use a throwaway account for practice only.
+## Security Notes
+
+- Discord tokens are stored in the SQLite database. In production, consider encrypting them at rest.
+- Change `JWT_SECRET` to a long random string in production.
+- This is a selfbot tool — use responsibly and only for practice/learning.
+- Discord's ToS prohibits selfbots; this project is for educational purposes only.

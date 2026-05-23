@@ -1,223 +1,262 @@
-// ─── BOT MANAGER ──────────────────────────────────────────────────────────────
-// Manages multiple Discord selfbot instances, one per user bot configuration
-
+// ─── BOT MANAGER ─────────────────────────────────────────────────────────────
 const { Client } = require("discord.js-selfbot-v13");
-const { getDb } = require("../db/database");
-const { v4: uuidv4 } = require("uuid");
+const db = require("./db");
 
-// Map of botId -> { client, userId }
-const activeBots = new Map();
+const instances = new Map();
 
-// Rate limiter per bot
-const cooldowns = new Map();
-
-function isAllowed(key, cooldownMs) {
-  const now = Date.now();
-  const lastSent = cooldowns.get(key);
-  if (lastSent && now - lastSent < cooldownMs) return false;
-  cooldowns.set(key, now);
-  return true;
+function getStatus(userId) {
+  return instances.get(userId)?.status || "stopped";
 }
 
-function saveLog({ userId, botId, type, serverName, channelName, authorTag, content, matchedKeywords, messageLink }) {
-  try {
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO logs (id, user_id, bot_id, type, server_name, channel_name, author_tag, content, matched_keywords, message_link)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      uuidv4(), userId, botId, type,
-      serverName || null, channelName || null,
-      authorTag || null, content || null,
-      matchedKeywords ? JSON.stringify(matchedKeywords) : null,
-      messageLink || null
-    );
-  } catch (err) {
-    console.error("[DB] Failed to save log:", err.message);
-  }
-}
+async function start(userId) {
+  if (instances.get(userId)?.status === "running") return;
 
-function getBotConfig(botId) {
-  const db = getDb();
-  const bot = db.prepare("SELECT * FROM user_bots WHERE id = ?").get(botId);
-  if (!bot) return null;
+  const config = db.prepare("SELECT * FROM user_configs WHERE user_id = ?").get(userId);
+  if (!config?.discord_token) throw new Error("No Discord token configured");
+  if (!config?.notify_channel_id) throw new Error("No notification channel configured");
 
-  const servers = db.prepare("SELECT server_id, server_name FROM monitored_servers WHERE bot_id = ?").all(botId);
-  const keywords = db.prepare("SELECT keyword FROM keywords WHERE bot_id = ?").all(botId).map(k => k.keyword);
+  const servers = db.prepare("SELECT server_id FROM monitored_servers WHERE user_id = ?").all(userId);
+  if (!servers.length) throw new Error("No servers to monitor. Add at least one server.");
 
-  return { bot, servers, keywords };
-}
+  const serverIds = servers.map((s) => s.server_id.trim());
 
-async function startBot(botId) {
-  if (activeBots.has(botId)) {
-    console.log(`[BOT] ${botId} already running`);
-    return { success: true, message: "Bot already running" };
-  }
+  console.log(`[BOT] Starting for user ${userId} | Servers: ${serverIds.join(", ")}`);
 
-  const config = getBotConfig(botId);
-  if (!config) return { success: false, message: "Bot config not found" };
-
-  const { bot, servers, keywords } = config;
-
-  const client = new Client();
-  const serverIds = servers.map(s => s.server_id);
-
-  client.on("ready", async () => {
-    console.log(`[BOT] ✅ Online as ${client.user.tag} (botId: ${botId})`);
-
-    // Update status in DB
-    getDb().prepare("UPDATE user_bots SET status = 'online', bot_name = ?, last_connected = strftime('%s', 'now') WHERE id = ?")
-      .run(client.user.tag, botId);
-
-    // Validate notify channel
-    try {
-      await client.channels.fetch(bot.notify_channel_id);
-    } catch {
-      console.warn(`[BOT] Could not verify notify channel for bot ${botId}`);
-    }
+  const client = new Client({
+    checkUpdate: false,
+    readyStatus: false,
+    intents: [
+      "GUILDS",
+      "GUILD_MESSAGES",
+      "GUILD_MEMBERS",
+      "MESSAGE_CONTENT",
+    ],
+    partials: ["MESSAGE", "CHANNEL", "GUILD_MEMBER"],
   });
 
+  instances.set(userId, { client, status: "connecting" });
+
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Login timed out")), 20000);
+
+    client.on("ready", async () => {
+      clearTimeout(timeout);
+      instances.set(userId, { client, status: "running" });
+      db.prepare("UPDATE user_configs SET bot_active = 1 WHERE user_id = ?").run(userId);
+
+      console.log(`[BOT] ✅ Online as: ${client.user.tag}`);
+      console.log(`[BOT] 👀 Monitoring servers: ${serverIds.join(", ")}`);
+      console.log(`[BOT] 🔔 Notify channel: ${config.notify_channel_id}`);
+
+      // Verify notify channel
+      try {
+        const ch = await client.channels.fetch(config.notify_channel_id);
+        console.log(`[BOT] 📡 Notify channel confirmed: #${ch.name}`);
+        addLog(userId, "system", { content: `Bot started as ${client.user.tag}. Monitoring ${serverIds.length} server(s). Notify channel: #${ch.name}` });
+      } catch (err) {
+        console.error(`[BOT] ❌ Could not fetch notify channel: ${err.message}`);
+        addLog(userId, "error", { content: `Could not fetch notify channel ID: ${config.notify_channel_id}. Error: ${err.message}` });
+      }
+
+      // Log which guilds the account is actually in
+      const joinedGuilds = client.guilds.cache.map(g => g.id);
+      console.log(`[BOT] Guilds this account is in: ${joinedGuilds.join(", ")}`);
+
+      for (const sid of serverIds) {
+        if (!joinedGuilds.includes(sid)) {
+          console.warn(`[BOT] ⚠️  Server ${sid} not found in account's guilds!`);
+          addLog(userId, "error", { content: `⚠️ Server ID ${sid} was not found in this account's guilds. Make sure the account has joined this server.` });
+        }
+      }
+
+      attachHandlers(client, userId, serverIds, config.notify_channel_id);
+      resolve();
+    });
+
+    client.on("error", (err) => {
+      clearTimeout(timeout);
+      console.error(`[BOT] Client error:`, err.message);
+      addLog(userId, "error", { content: `Client error: ${err.message}` });
+      instances.set(userId, { client: null, status: "stopped" });
+      db.prepare("UPDATE user_configs SET bot_active = 0 WHERE user_id = ?").run(userId);
+    });
+
+    client.login(config.discord_token).catch((err) => {
+      clearTimeout(timeout);
+      console.error(`[BOT] Login failed:`, err.message);
+      instances.set(userId, { client: null, status: "stopped" });
+      reject(new Error(`Login failed: ${err.message}`));
+    });
+  });
+}
+
+function stop(userId) {
+  const inst = instances.get(userId);
+  if (inst?.client) {
+    try { inst.client.destroy(); } catch { }
+  }
+  instances.set(userId, { client: null, status: "stopped" });
+  db.prepare("UPDATE user_configs SET bot_active = 0 WHERE user_id = ?").run(userId);
+  addLog(userId, "system", { content: "Bot stopped by user." });
+  console.log(`[BOT] Stopped for user ${userId}`);
+}
+
+async function reload(userId) {
+  stop(userId);
+  await start(userId);
+}
+
+function addLog(userId, type, data) {
+  try {
+    db.prepare(`
+      INSERT INTO logs (user_id, type, server_id, server_name, channel_name, author_tag, content, matched_keywords)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId, type,
+      data.server_id || null,
+      data.server_name || null,
+      data.channel_name || null,
+      data.author_tag || null,
+      data.content || null,
+      data.matched_keywords || null
+    );
+    // Keep max 500 logs per user
+    db.prepare(`
+      DELETE FROM logs WHERE user_id = ? AND id NOT IN (
+        SELECT id FROM logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 500
+      )
+    `).run(userId, userId);
+  } catch (err) {
+    console.error("[BOT] Failed to write log:", err.message);
+  }
+}
+
+function attachHandlers(client, userId, serverIds, notifyChannelId) {
+  const cooldowns = new Map();
+
+  function isAllowed(key, ms) {
+    const now = Date.now();
+    if (cooldowns.has(key) && now - cooldowns.get(key) < ms) return false;
+    cooldowns.set(key, now);
+    return true;
+  }
+
+  // ── Keyword message handler ───────────────────────────────────────────────
   client.on("messageCreate", async (message) => {
     try {
-      if (!serverIds.includes(message.guild?.id)) return;
+      if (!message.guild) return;
+      if (!serverIds.includes(message.guild.id)) return;
       if (message.author?.id === client.user?.id) return;
-      if (!message.content || message.author?.bot) return;
+      if (!message.content) return;
+      if (message.author?.bot) return;
 
-      const currentKeywords = getDb()
-        .prepare("SELECT keyword FROM keywords WHERE bot_id = ?")
-        .all(botId).map(k => k.keyword);
+      const keywords = db
+        .prepare("SELECT keyword FROM keywords WHERE user_id = ?")
+        .all(userId)
+        .map((k) => k.keyword);
+
+      if (keywords.length === 0) {
+        console.log(`[BOT] ⚠️  No keywords set for user ${userId} — add keywords in the dashboard`);
+        return;
+      }
 
       const lower = message.content.toLowerCase();
-      const matched = currentKeywords.filter(kw => lower.includes(kw.toLowerCase()));
-      if (matched.length === 0) return;
+      const matched = keywords.filter((kw) => lower.includes(kw.toLowerCase()));
 
-      const cooldownKey = `kw-${botId}-${message.channel.id}-${matched[0]}`;
-      if (!isAllowed(cooldownKey, 30_000)) return;
-      if (!isAllowed(`global-${botId}`, 2_000)) return;
+      console.log(`[BOT] 💬 Message in ${message.guild.name}#${message.channel.name} from ${message.author.tag}: "${message.content.slice(0, 80)}"`);
 
-      const serverName = message.guild?.name || message.guild?.id;
-      const channelName = message.channel?.name || message.channel?.id;
-      const authorTag = message.author?.tag || "Unknown";
-      const messageLink = `https://discord.com/channels/${message.guild?.id}/${message.channel?.id}/${message.id}`;
+      if (!matched.length) return;
 
-      console.log(`[BOT] [${serverName}] Match: [${matched.join(", ")}] from ${authorTag}`);
+      // Rate limit
+      const ck = `kw-${message.channel.id}-${matched[0]}`;
+      if (!isAllowed(ck, 30000)) {
+        console.log(`[BOT] Rate limited: keyword "${matched[0]}" in #${message.channel.name}`);
+        return;
+      }
+      if (!isAllowed("global", 2000)) {
+        console.log(`[BOT] Global rate limit active`);
+        return;
+      }
 
-      // Save log to DB
-      saveLog({
-        userId: bot.user_id, botId,
-        type: "keyword",
-        serverName, channelName, authorTag,
-        content: message.content.slice(0, 1000),
-        matchedKeywords: matched,
-        messageLink,
+      console.log(`[BOT] 🎯 MATCH! Keywords: [${matched.join(", ")}] from ${message.author.tag} in ${message.guild.name}`);
+
+      addLog(userId, "keyword", {
+        server_id: message.guild.id,
+        server_name: message.guild.name,
+        channel_name: message.channel.name,
+        author_tag: message.author.tag,
+        content: message.content.slice(0, 500),
+        matched_keywords: matched.join(", "),
       });
 
-      // Send Discord notification
-      try {
-        const notifyChannel = await client.channels.fetch(bot.notify_channel_id);
-        const keywordList = matched.map(w => `\`${w}\``).join(", ");
-        const timestamp = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+      const ch = await client.channels.fetch(notifyChannelId).catch((err) => {
+        console.error(`[BOT] Could not fetch notify channel: ${err.message}`);
+        addLog(userId, "error", { content: `Failed to fetch notify channel: ${err.message}` });
+        return null;
+      });
 
-        await notifyChannel.send(
-          `🔔 **Keyword Alert!**\n━━━━━━━━━━━━━━━━━━━━\n` +
-          `📌 **Keywords matched:** ${keywordList}\n` +
-          `🏠 **Server:** ${serverName}\n` +
-          `💬 **Channel:** #${channelName}\n` +
-          `👤 **Sent by:** ${authorTag}\n` +
-          `🕐 **Time:** ${timestamp}\n\n` +
-          `📝 **Message:**\n> ${message.content.slice(0, 500)}\n\n` +
-          `🔗 [Jump to message](${messageLink})`
-        );
-      } catch (sendErr) {
-        console.error("[BOT] Failed to send notification:", sendErr.message);
+      if (ch) {
+        const link = `https://discord.com/channels/${message.guild.id}/${message.channel.id}/${message.id}`;
+        await ch.send(
+          `🔔 **Keyword Alert** | \`${matched.join(", ")}\`\n` +
+          `**Server:** ${message.guild.name} | **Channel:** #${message.channel.name}\n` +
+          `**From:** ${message.author.tag}\n> ${message.content.slice(0, 300)}\n🔗 ${link}`
+        ).catch((err) => {
+          console.error(`[BOT] Failed to send notification: ${err.message}`);
+          addLog(userId, "error", { content: `Failed to send Discord notification: ${err.message}` });
+        });
+        console.log(`[BOT] ✅ Notification sent!`);
       }
+
     } catch (err) {
-      console.error("[BOT] Message handler error:", err.message);
+      console.error("[BOT] messageCreate error:", err.message);
+      addLog(userId, "error", { content: `Message handler error: ${err.message}` });
     }
   });
 
+  // ── Member join handler ───────────────────────────────────────────────────
   client.on("guildMemberAdd", async (member) => {
     try {
-      const currentServers = getDb()
-        .prepare("SELECT server_id FROM monitored_servers WHERE bot_id = ?")
-        .all(botId).map(s => s.server_id);
+      if (!serverIds.includes(member.guild?.id)) return;
 
-      if (!currentServers.includes(member.guild?.id)) return;
+      const ck = `join-${member.user.id}`;
+      if (!isAllowed(ck, 300000) || !isAllowed("global", 2000)) {
+        console.log(`[BOT] Rate limited join for ${member.user.tag}`);
+        return;
+      }
 
-      const cooldownKey = `join-${botId}-${member.user.id}`;
-      if (!isAllowed(cooldownKey, 5 * 60_000)) return;
-      if (!isAllowed(`global-${botId}`, 2_000)) return;
+      const ageDays = Math.floor((Date.now() - member.user.createdAt) / 86400000);
+      console.log(`[BOT] 👋 ${member.user.tag} joined ${member.guild.name} (account age: ${ageDays} days)`);
 
-      const accountAgeDays = Math.floor((Date.now() - member.user.createdAt.getTime()) / (1000 * 60 * 60 * 24));
-      const newWarning = accountAgeDays < 7 ? "\n⚠️  **New account** (less than 7 days old)" : "";
-
-      saveLog({
-        userId: bot.user_id, botId,
-        type: "join",
-        serverName: member.guild?.name,
-        authorTag: member.user.tag,
-        content: `Account age: ${accountAgeDays} days`,
+      addLog(userId, "join", {
+        server_id: member.guild.id,
+        server_name: member.guild.name,
+        author_tag: member.user.tag,
+        content: `Joined. Account age: ${ageDays} day(s).${ageDays < 7 ? " ⚠️ New account." : ""}`,
       });
 
-      try {
-        const notifyChannel = await client.channels.fetch(bot.notify_channel_id);
-        await notifyChannel.send(
-          `👋 **New Member Joined!**\n━━━━━━━━━━━━━━━━━━━━\n` +
-          `👤 **User:** ${member.user.tag}\n` +
-          `🆔 **ID:** \`${member.user.id}\`\n` +
-          `🏠 **Server:** ${member.guild?.name}\n` +
-          `👥 **Member count:** ${member.guild?.memberCount}\n` +
-          `📅 **Account created:** ${accountAgeDays} days ago` +
-          newWarning
-        );
-      } catch {}
+      const ch = await client.channels.fetch(notifyChannelId).catch((err) => {
+        console.error(`[BOT] Could not fetch notify channel: ${err.message}`);
+        return null;
+      });
+
+      if (ch) {
+        await ch.send(
+          `👋 **New Member** joined **${member.guild.name}**\n` +
+          `**User:** ${member.user.tag} | **Members:** ${member.guild.memberCount}\n` +
+          `**Account age:** ${ageDays} day(s)${ageDays < 7 ? " ⚠️ New account!" : ""}`
+        ).catch((err) => {
+          console.error(`[BOT] Failed to send join notification: ${err.message}`);
+          addLog(userId, "error", { content: `Failed to send join notification: ${err.message}` });
+        });
+        console.log(`[BOT] ✅ Join notification sent!`);
+      }
+
     } catch (err) {
-      console.error("[BOT] Join handler error:", err.message);
+      console.error("[BOT] guildMemberAdd error:", err.message);
+      addLog(userId, "error", { content: `Join handler error: ${err.message}` });
     }
   });
-
-  client.on("error", (err) => {
-    console.error(`[BOT] Client error for ${botId}:`, err.message);
-  });
-
-  try {
-    await client.login(bot.discord_token);
-    activeBots.set(botId, { client, userId: bot.user_id });
-    return { success: true, message: "Bot started successfully" };
-  } catch (err) {
-    console.error(`[BOT] Login failed for ${botId}:`, err.message);
-    getDb().prepare("UPDATE user_bots SET status = 'error' WHERE id = ?").run(botId);
-    return { success: false, message: `Login failed: ${err.message}` };
-  }
 }
 
-async function stopBot(botId) {
-  const entry = activeBots.get(botId);
-  if (!entry) return { success: false, message: "Bot not running" };
-
-  try {
-    await entry.client.destroy();
-    activeBots.delete(botId);
-    getDb().prepare("UPDATE user_bots SET status = 'offline' WHERE id = ?").run(botId);
-    console.log(`[BOT] Stopped bot ${botId}`);
-    return { success: true, message: "Bot stopped" };
-  } catch (err) {
-    return { success: false, message: err.message };
-  }
-}
-
-function getBotStatus(botId) {
-  return activeBots.has(botId) ? "online" : "offline";
-}
-
-// Auto-start all bots that were online on server restart
-async function autoStartBots() {
-  const db = getDb();
-  const bots = db.prepare("SELECT id FROM user_bots WHERE status = 'online'").all();
-  console.log(`[BOT MANAGER] Auto-starting ${bots.length} bot(s)...`);
-  for (const bot of bots) {
-    await startBot(bot.id);
-  }
-}
-
-module.exports = { startBot, stopBot, getBotStatus, activeBots };
+module.exports = { start, stop, reload, getStatus };

@@ -1,129 +1,93 @@
-# ⬡ Discord Sentinel — Multi-User Dashboard
+# WatchCord — Discord Monitor Web Platform
 
-A full-stack web app for monitoring Discord servers with keyword alerts and member join tracking — with per-user isolated dashboards, database persistence, and a sleek dark UI.
+A full-stack web platform for monitoring Discord servers. Users register, configure their credentials, and get real-time alerts in their private Discord channel.
 
-## Architecture
+---
 
-```
-discord-sentinel/
-├── server/              ← Express API + Bot Manager
-│   ├── index.js         ← Main server entry
-│   ├── auth.js          ← JWT authentication
-│   ├── botManager.js    ← Discord selfbot instances
-│   └── routes/
-│       ├── authRoutes.js
-│       ├── botRoutes.js
-│       └── logRoutes.js
-├── db/
-│   └── database.js      ← SQLite schema & connection
-└── client/              ← React frontend
-    └── src/
-        ├── pages/
-        │   ├── AuthPage.js     ← Login/Register + onboarding
-        │   ├── Dashboard.js    ← Bot overview + setup wizard
-        │   ├── BotDetail.js    ← Manage servers & keywords
-        │   └── LogsPage.js     ← Full activity log
-        ├── components/
-        │   └── Layout.js       ← Sidebar navigation
-        └── contexts/
-            └── AuthContext.js  ← Auth state + API helper
-```
+## Stack
+- **Backend:** Node.js + Express
+- **Database:** SQLite (via better-sqlite3)
+- **Auth:** JWT
+- **Frontend:** React + Vite
 
-## Quick Start (Development)
+---
 
-### 1. Install dependencies
+## Setup & Run
 
+### 1. Install server dependencies
 ```bash
-# Backend
 npm install
-
-# Frontend
-cd client && npm install && cd ..
 ```
 
-### 2. Start the backend
+### 2. Build the React frontend
+```bash
+npm run build
+```
 
+### 3. Configure environment
+Edit `.env`:
+```env
+PORT=3001
+JWT_SECRET=replace_with_a_long_random_secret
+```
+
+### 4. Start the server
 ```bash
 npm start
-# API runs on http://localhost:4000
 ```
 
-### 3. Start the frontend
-
-```bash
-cd client && npm start
-# UI runs on http://localhost:3000
-```
-
-Open http://localhost:3000 → Register → Add Bot → Configure → Start!
+Visit: **http://localhost:3001**
 
 ---
 
-## Deploying to Production
+## Development (hot reload)
 
-### Option A: Single-server (Recommended)
-
-Build the React app and serve it from Express:
+Run backend and frontend separately:
 
 ```bash
-cd client && npm run build && cd ..
-NODE_ENV=production PORT=4000 node server/index.js
+# Terminal 1 — backend
+npm start
+
+# Terminal 2 — frontend dev server
+cd client && npm install && npm run dev
 ```
 
-### Option B: Railway / Render / Fly.io
+Frontend dev server: http://localhost:5173 (proxies API to :3001)
 
-Add a `Procfile`:
-```
-web: cd client && npm run build && cd .. && NODE_ENV=production node server/index.js
-```
+---
 
-Set environment variables:
-```
-PORT=4000
-NODE_ENV=production
-CLIENT_ORIGIN=https://your-domain.com
-JWT_SECRET=your-super-secret-jwt-key-change-this
-```
-
-### Option C: VPS with PM2
+## Deployment on Windows VPS with PM2
 
 ```bash
-npm install -g pm2
-cd client && npm run build && cd ..
-pm2 start server/index.js --name sentinel
+# Build first
+npm run build
+
+# Start with PM2
+pm2 start server/index.js --name watchcord
 pm2 save
+pm2-windows-startup install
 ```
 
 ---
 
-## Environment Variables
+## Project Structure
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `4000` | Server port |
-| `NODE_ENV` | `development` | Set to `production` for deploy |
-| `CLIENT_ORIGIN` | `http://localhost:3000` | CORS allowed origin |
-| `JWT_SECRET` | (built-in dev default) | **Change this in production!** |
-
-> No `.env` needed for development. All user data (tokens, server IDs, keywords) is stored in `db/sentinel.db` (SQLite).
-
----
-
-## Database
-
-SQLite file at `db/sentinel.db`. Tables:
-
-- `users` — accounts
-- `user_bots` — Discord token + notify channel per user
-- `monitored_servers` — server IDs per bot
-- `keywords` — keywords per bot
-- `logs` — activity history
-
----
-
-## Security Notes
-
-- Discord tokens are stored in the SQLite database. In production, consider encrypting them at rest.
-- Change `JWT_SECRET` to a long random string in production.
-- This is a selfbot tool — use responsibly and only for practice/learning.
-- Discord's ToS prohibits selfbots; this project is for educational purposes only.
+```
+discord-monitor-web/
+├── server/
+│   ├── index.js          # Express entry point
+│   ├── db.js             # SQLite schema + connection
+│   ├── botManager.js     # Per-user Discord client manager
+│   ├── routes/
+│   │   ├── auth.js       # Register / Login
+│   │   ├── config.js     # Token, servers, keywords, bot start/stop
+│   │   └── logs.js       # Fetch / clear logs
+│   └── middleware/
+│       └── auth.js       # JWT verification
+├── client/               # React + Vite frontend
+│   └── src/
+│       ├── pages/        # Landing, Login, Register, Dashboard
+│       └── components/   # Overview, TokenSetup, ServerManager, KeywordManager, LogsPanel
+├── data/                 # Auto-created — holds monitor.db
+└── .env                  # JWT_SECRET and PORT
+```

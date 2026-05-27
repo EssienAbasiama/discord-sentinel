@@ -17,7 +17,7 @@ export default function ServerManager({ servers, onAdd, onDelete, toast }) {
       <h1 style={{ fontFamily: "var(--font-head)", fontWeight: 700, fontSize: 28, marginBottom: 4 }}>Monitored Servers</h1>
       <p style={{ color: "var(--text-dim)", fontSize: 14, marginBottom: 32 }}>Add the servers you want to watch for keyword mentions and joins</p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
+      <div className="grid-2col">
         {/* Add server form */}
         <div className="card">
           <div style={{ fontFamily: "var(--font-head)", fontWeight: 600, fontSize: 16, marginBottom: 20 }}>Add a Server</div>

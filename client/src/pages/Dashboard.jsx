@@ -50,16 +50,25 @@ export default function Dashboard() {
     nav("/");
   }
 
+  function handleNavClick(id) {
+    setTab(id);
+    setMenuOpen(false);
+  }
+
   const setupComplete = data?.config?.discord_token && data?.config?.notify_channel_id && data?.servers?.length > 0;
 
+  const statusClass = data?.botStatus === "running" ? "dot-green" : data?.botStatus === "connecting" ? "dot-amber" : "dot-red";
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
+    <div className="dash-layout">
+      {/* Sidebar backdrop (mobile) */}
+      <div
+        className={`sidebar-overlay${menuOpen ? " sidebar-open" : ""}`}
+        onClick={() => setMenuOpen(false)}
+      />
+
       {/* Sidebar */}
-      <aside style={{
-        width: 220, flexShrink: 0, background: "var(--bg2)",
-        borderRight: "1px solid var(--border)", padding: "24px 0",
-        display: "flex", flexDirection: "column", position: "sticky", top: 0, height: "100vh"
-      }}>
+      <aside className={`dash-sidebar${menuOpen ? " sidebar-open" : ""}`}>
         <div style={{ padding: "0 20px 24px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ fontFamily: "var(--font-head)", fontWeight: 800, fontSize: 20 }}>
             <span style={{ color: "var(--primary)" }}>Watch</span>Cord
@@ -70,7 +79,7 @@ export default function Dashboard() {
         {/* Bot status pill */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)" }}>
-            <span className={`dot ${data?.botStatus === "running" ? "dot-green" : data?.botStatus === "connecting" ? "dot-amber" : "dot-red"}`} />
+            <span className={`dot ${statusClass}`} />
             <span style={{ fontSize: 13, color: "var(--text-dim)", fontWeight: 500 }}>
               {data?.botStatus === "running" ? "Bot Running" : data?.botStatus === "connecting" ? "Connecting..." : "Bot Stopped"}
             </span>
@@ -79,7 +88,7 @@ export default function Dashboard() {
 
         <nav style={{ flex: 1, padding: "12px 12px" }}>
           {NAV.map(n => (
-            <button key={n.id} onClick={() => setTab(n.id)}
+            <button key={n.id} onClick={() => handleNavClick(n.id)}
               style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%",
                 padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -106,38 +115,52 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main style={{ flex: 1, overflowY: "auto", padding: "36px 40px" }}>
-        {!data ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300 }}>
-            <span className="spinner" style={{ width: 32, height: 32 }} />
+      {/* Content area */}
+      <div className="dash-content">
+        {/* Mobile-only top bar */}
+        <header className="mob-header">
+          <button className="hamburger" onClick={() => setMenuOpen(m => !m)} aria-label="Open menu">
+            <span /><span /><span />
+          </button>
+          <div style={{ fontFamily: "var(--font-head)", fontWeight: 800, fontSize: 18 }}>
+            <span style={{ color: "var(--primary)" }}>Watch</span>Cord
           </div>
-        ) : (
-          <>
-            {/* Setup prompt if incomplete */}
-            {!setupComplete && tab !== "setup" && (
-              <div className="fade-up" style={{ background: "var(--amber-dim)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 12, padding: "14px 20px", marginBottom: 28, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>⚠️</span>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: "var(--amber)" }}>Setup not complete</div>
-                    <div style={{ fontSize: 13, color: "var(--text-dim)" }}>Add your token, notification channel, and at least one server to activate.</div>
-                  </div>
-                </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setTab("setup")} style={{ color: "var(--amber)", borderColor: "rgba(251,191,36,0.3)" }}>
-                  Complete Setup →
-                </button>
-              </div>
-            )}
+          <span className={`dot ${statusClass}`} />
+        </header>
 
-            {tab === "overview" && <Overview data={data} onStart={() => api.startBot().then(load).catch(e => toast(e.message, "error"))} onStop={() => api.stopBot().then(load)} onTabChange={setTab} toast={toast} />}
-            {tab === "setup" && <TokenSetup config={data.config} onSave={async (body) => { await api.saveToken(body); toast("Token saved!"); load(); }} toast={toast} />}
-            {tab === "servers" && <ServerManager servers={data.servers} onAdd={async (s) => { await api.addServer(s); toast("Server added!"); load(); }} onDelete={async (id) => { await api.deleteServer(id); toast("Server removed"); load(); }} toast={toast} />}
-            {tab === "keywords" && <KeywordManager keywords={data.keywords} onAdd={async (k) => { await api.addKeyword(k); toast("Keyword added!"); load(); }} onDelete={async (id) => { await api.deleteKeyword(id); toast("Keyword removed"); load(); }} />}
-            {tab === "logs" && <LogsPanel />}
-          </>
-        )}
-      </main>
+        {/* Main content */}
+        <main className="dash-main">
+          {!data ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300 }}>
+              <span className="spinner" style={{ width: 32, height: 32 }} />
+            </div>
+          ) : (
+            <>
+              {/* Setup prompt if incomplete */}
+              {!setupComplete && tab !== "setup" && (
+                <div className="fade-up" style={{ background: "var(--amber-dim)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 12, padding: "14px 20px", marginBottom: 28, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>⚠️</span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--amber)" }}>Setup not complete</div>
+                      <div style={{ fontSize: 13, color: "var(--text-dim)" }}>Add your token, notification channel, and at least one server to activate.</div>
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTab("setup")} style={{ color: "var(--amber)", borderColor: "rgba(251,191,36,0.3)" }}>
+                    Complete Setup →
+                  </button>
+                </div>
+              )}
+
+              {tab === "overview" && <Overview data={data} onStart={() => api.startBot().then(load).catch(e => toast(e.message, "error"))} onStop={() => api.stopBot().then(load)} onTabChange={setTab} toast={toast} />}
+              {tab === "setup" && <TokenSetup config={data.config} onSave={async (body) => { await api.saveToken(body); toast("Token saved!"); load(); }} toast={toast} />}
+              {tab === "servers" && <ServerManager servers={data.servers} onAdd={async (s) => { await api.addServer(s); toast("Server added!"); load(); }} onDelete={async (id) => { await api.deleteServer(id); toast("Server removed"); load(); }} toast={toast} />}
+              {tab === "keywords" && <KeywordManager keywords={data.keywords} onAdd={async (k) => { await api.addKeyword(k); toast("Keyword added!"); load(); }} onDelete={async (id) => { await api.deleteKeyword(id); toast("Keyword removed"); load(); }} />}
+              {tab === "logs" && <LogsPanel />}
+            </>
+          )}
+        </main>
+      </div>
 
       {/* Toasts */}
       <div className="toast-wrap">

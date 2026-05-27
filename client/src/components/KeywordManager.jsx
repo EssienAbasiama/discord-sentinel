@@ -17,7 +17,7 @@ export default function KeywordManager({ keywords, onAdd, onDelete }) {
       <h1 style={{ fontFamily: "var(--font-head)", fontWeight: 700, fontSize: 28, marginBottom: 4 }}>Keywords</h1>
       <p style={{ color: "var(--text-dim)", fontSize: 14, marginBottom: 32 }}>You'll get an alert whenever these words appear in a monitored server</p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
+      <div className="grid-2col">
         <div className="card">
           <div style={{ fontFamily: "var(--font-head)", fontWeight: 600, fontSize: 16, marginBottom: 20 }}>Add Keyword</div>
           <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>

@@ -43,7 +43,7 @@ export default function TokenSetup({ config, onSave, toast }) {
       <h1 style={{ fontFamily: "var(--font-head)", fontWeight: 700, fontSize: 28, marginBottom: 4 }}>Bot Setup</h1>
       <p style={{ color: "var(--text-dim)", fontSize: 14, marginBottom: 32 }}>Configure your Discord token and notification channel</p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
+      <div className="grid-2col">
         {/* Form */}
         <div className="card">
           <div style={{ fontFamily: "var(--font-head)", fontWeight: 600, fontSize: 16, marginBottom: 24 }}>Your Credentials</div>

@@ -13,7 +13,7 @@ export default function Landing() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       {/* Nav */}
-      <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 48px", borderBottom: "1px solid var(--border)" }}>
+      <nav className="landing-nav">
         <div style={{ fontFamily: "var(--font-head)", fontWeight: 800, fontSize: 22, color: "var(--text)" }}>
           <span style={{ color: "var(--primary)" }}>Watch</span>Cord
         </div>
@@ -24,7 +24,7 @@ export default function Landing() {
       </nav>
 
       {/* Hero */}
-      <div style={{ maxWidth: 800, margin: "0 auto", textAlign: "center", padding: "100px 24px 80px" }}>
+      <div className="landing-hero">
         <div className="badge badge-indigo fade-up" style={{ marginBottom: 24, display: "inline-flex" }}>
           ✦ Discord Server Monitor
         </div>
@@ -45,9 +45,9 @@ export default function Landing() {
       </div>
 
       {/* Features */}
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 24px 100px" }}>
+      <div className="landing-features">
         <p className="section-label" style={{ textAlign: "center", marginBottom: 40 }}>Everything You Need</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", gap: 16 }}>
           {features.map((f, i) => (
             <div key={i} className="card fade-up" style={{ animationDelay: `${0.1 * i}s`, transition: "border-color 0.2s" }}
               onMouseEnter={e => e.currentTarget.style.borderColor = "var(--border-bright)"}

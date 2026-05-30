@@ -2,6 +2,9 @@
 const { Client } = require("discord.js-selfbot-v13");
 const db = require("./db");
 
+const DEFAULT_WELCOME =
+  "👋 Welcome to the server! Glad to have you here — feel free to look around and say hi.";
+
 const instances = new Map();
 
 function getStatus(userId) {
@@ -252,11 +255,35 @@ function attachHandlers(client, userId, serverIds, notifyChannelId) {
         console.log(`[BOT] ✅ Join notification sent!`);
       }
 
+      // ── Welcome DM (sent to every new member) ─────────────────────────────
+      await sendWelcome(userId, member);
+
     } catch (err) {
       console.error("[BOT] guildMemberAdd error:", err.message);
       addLog(userId, "error", { content: `Join handler error: ${err.message}` });
     }
   });
+
+  // Send a welcome DM to a newly-joined member.
+  async function sendWelcome(userId, member) {
+    try {
+      const cfg = db
+        .prepare("SELECT welcome_message FROM user_configs WHERE user_id = ?")
+        .get(userId);
+      const message = cfg?.welcome_message?.trim() || DEFAULT_WELCOME;
+
+      await member.send(message);
+      console.log(`[BOT] ✉️ Welcome DM sent to ${member.user.tag}`);
+      addLog(userId, "welcome", {
+        author_tag: member.user.tag,
+        content: `✉️ Welcome DM sent: ${message.slice(0, 300)}`,
+      });
+    } catch (err) {
+      console.error("[BOT] Welcome error:", err.message);
+      addLog(userId, "error", { content: `Welcome DM failed for ${member.user?.tag}: ${err.message}` });
+    }
+  }
+
 }
 
 module.exports = { start, stop, reload, getStatus };

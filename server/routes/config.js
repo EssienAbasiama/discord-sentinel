@@ -12,7 +12,21 @@ router.get("/", (req, res) => {
   const servers = db.prepare("SELECT * FROM monitored_servers WHERE user_id = ? ORDER BY added_at DESC").all(req.user.id);
   const keywords = db.prepare("SELECT * FROM keywords WHERE user_id = ? ORDER BY created_at DESC").all(req.user.id);
   const status = botManager.getStatus(req.user.id);
+
   res.json({ config, servers, keywords, botStatus: status });
+});
+
+// ── Save welcome message ──────────────────────────────────────────────────────
+router.post("/welcome", (req, res) => {
+  const { welcome_message } = req.body;
+  try {
+    db.prepare("UPDATE user_configs SET welcome_message = ? WHERE user_id = ?")
+      .run(welcome_message?.trim() || null, req.user.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[CONFIG] Save welcome message error:", err.message);
+    res.status(500).json({ error: "Could not save welcome message" });
+  }
 });
 
 // ── Save token + channel ──────────────────────────────────────────────────────

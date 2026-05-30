@@ -59,4 +59,19 @@ db.exec(`
   );
 `);
 
+// ── Lightweight column migrations for existing databases ────────────────────
+// CREATE TABLE IF NOT EXISTS won't add columns to a table that already exists,
+// so add the welcome_message column to user_configs only if it's missing.
+const existingCols = new Set(
+  db.prepare("PRAGMA table_info(user_configs)").all().map((c) => c.name)
+);
+const extraColumns = [
+  ["welcome_message", "TEXT"],
+];
+for (const [name, def] of extraColumns) {
+  if (!existingCols.has(name)) {
+    db.exec(`ALTER TABLE user_configs ADD COLUMN ${name} ${def}`);
+  }
+}
+
 module.exports = db;

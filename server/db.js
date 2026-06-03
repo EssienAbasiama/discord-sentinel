@@ -74,4 +74,39 @@ for (const [name, def] of extraColumns) {
   }
 }
 
+// ── User access-control columns (super admin, enable/disable, per-user limits) ─
+// SQLite fills existing rows with the DEFAULT when a column is added, so existing
+// users automatically get sensible limits and an enabled, non-admin status.
+const userCols = new Set(
+  db.prepare("PRAGMA table_info(users)").all().map((c) => c.name)
+);
+const userExtraColumns = [
+  ["is_super_admin", "INTEGER DEFAULT 0"],
+  ["is_enabled", "INTEGER DEFAULT 1"],
+  ["max_servers", "INTEGER DEFAULT 3"],
+  ["max_keywords", "INTEGER DEFAULT 10"],
+];
+for (const [name, def] of userExtraColumns) {
+  if (!userCols.has(name)) {
+    db.exec(`ALTER TABLE users ADD COLUMN ${name} ${def}`);
+    console.log(`[DB] Migration: added column users.${name} (existing rows backfilled with default)`);
+  }
+}
+
+// ── Bootstrap the platform super admins ─────────────────────────────────────
+// These accounts are always granted super-admin access and force-enabled when
+// they exist. New registrations using these emails are promoted in the auth
+// route (see routes/auth.js), since they may not exist yet at boot time.
+const SUPER_ADMIN_EMAILS = ["hqxwvbvj5@gmx.com", "essienabasiama11@gmail.com"];
+const promote = db.prepare(
+  "UPDATE users SET is_super_admin = 1, is_enabled = 1 WHERE email = ?"
+);
+for (const email of SUPER_ADMIN_EMAILS) {
+  const result = promote.run(email.toLowerCase());
+  if (result.changes > 0) {
+    console.log(`[DB] Ensured super-admin access for ${email}`);
+  }
+}
+
 module.exports = db;
+module.exports.SUPER_ADMIN_EMAILS = SUPER_ADMIN_EMAILS;

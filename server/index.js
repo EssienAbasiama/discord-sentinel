@@ -13,6 +13,7 @@ app.use(express.json());
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/config", require("./routes/config"));
 app.use("/api/logs", require("./routes/logs"));
+app.use("/api/admin", require("./routes/admin"));
 
 // ── Serve React frontend ──────────────────────────────────────────────────────
 const CLIENT_DIST = path.join(__dirname, "../client/dist");

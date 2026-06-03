@@ -6,6 +6,7 @@ import TokenSetup from "../components/TokenSetup";
 import ServerManager from "../components/ServerManager";
 import KeywordManager from "../components/KeywordManager";
 import LogsPanel from "../components/LogsPanel";
+import AdminPanel from "../components/AdminPanel";
 
 const NAV = [
   { id: "overview", label: "Overview", icon: "◈" },
@@ -14,6 +15,8 @@ const NAV = [
   { id: "keywords", label: "Keywords", icon: "🔍" },
   { id: "logs", label: "Logs", icon: "📋" },
 ];
+
+const ADMIN_NAV = { id: "admin", label: "User Management", icon: "👥" };
 
 export default function Dashboard() {
   const [tab, setTab] = useState("overview");
@@ -33,6 +36,13 @@ export default function Dashboard() {
     try {
       const d = await api.getConfig();
       setData(d);
+      // Keep the cached user's admin flag fresh in case it changed server-side.
+      if (typeof d.isSuperAdmin === "boolean") {
+        const stored = JSON.parse(localStorage.getItem("wc_user") || "{}");
+        if (stored.is_super_admin !== d.isSuperAdmin) {
+          localStorage.setItem("wc_user", JSON.stringify({ ...stored, is_super_admin: d.isSuperAdmin }));
+        }
+      }
     } catch { toast("Failed to load config", "error"); }
   }, [toast]);
 
@@ -56,6 +66,11 @@ export default function Dashboard() {
   }
 
   const setupComplete = data?.config?.discord_token && data?.config?.notify_channel_id && data?.servers?.length > 0;
+
+  // Super-admin status comes fresh from the config response; fall back to the
+  // value stored at login so the nav doesn't flash before data loads.
+  const isSuperAdmin = data?.isSuperAdmin ?? user.is_super_admin ?? false;
+  const navItems = isSuperAdmin ? [...NAV, ADMIN_NAV] : NAV;
 
   const statusClass = data?.botStatus === "running" ? "dot-green" : data?.botStatus === "connecting" ? "dot-amber" : "dot-red";
 
@@ -87,7 +102,7 @@ export default function Dashboard() {
         </div>
 
         <nav style={{ flex: 1, padding: "12px 12px" }}>
-          {NAV.map(n => (
+          {navItems.map(n => (
             <button key={n.id} onClick={() => handleNavClick(n.id)}
               style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%",
@@ -157,6 +172,7 @@ export default function Dashboard() {
               {tab === "servers" && <ServerManager servers={data.servers} onAdd={async (s) => { await api.addServer(s); toast("Server added!"); load(); }} onDelete={async (id) => { await api.deleteServer(id); toast("Server removed"); load(); }} toast={toast} />}
               {tab === "keywords" && <KeywordManager keywords={data.keywords} onAdd={async (k) => { await api.addKeyword(k); toast("Keyword added!"); load(); }} onDelete={async (id) => { await api.deleteKeyword(id); toast("Keyword removed"); load(); }} />}
               {tab === "logs" && <LogsPanel />}
+              {tab === "admin" && isSuperAdmin && <AdminPanel toast={toast} />}
             </>
           )}
         </main>

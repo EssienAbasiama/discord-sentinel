@@ -34,4 +34,8 @@ export const api = {
     return req("GET", `/logs${q ? "?" + q : ""}`);
   },
   clearLogs: () => req("DELETE", "/logs"),
+
+  // ── Super admin ──────────────────────────────────────────────────────────
+  adminGetUsers: () => req("GET", "/admin/users"),
+  adminUpdateUser: (id, body) => req("PATCH", `/admin/users/${id}`, body),
 };

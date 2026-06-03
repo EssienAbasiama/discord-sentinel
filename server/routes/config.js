@@ -13,7 +13,17 @@ router.get("/", (req, res) => {
   const keywords = db.prepare("SELECT * FROM keywords WHERE user_id = ? ORDER BY created_at DESC").all(req.user.id);
   const status = botManager.getStatus(req.user.id);
 
-  res.json({ config, servers, keywords, botStatus: status });
+  res.json({
+    config,
+    servers,
+    keywords,
+    botStatus: status,
+    isSuperAdmin: req.user.is_super_admin,
+    limits: {
+      max_servers: req.dbUser.max_servers,
+      max_keywords: req.dbUser.max_keywords,
+    },
+  });
 });
 
 // ── Save welcome message ──────────────────────────────────────────────────────
@@ -42,6 +52,24 @@ router.post("/token", (req, res) => {
 router.post("/servers", async (req, res) => {
   const { server_id, server_name } = req.body;
   if (!server_id) return res.status(400).json({ error: "Server ID required" });
+
+  // Enforce the per-user server limit (super admins are unlimited). Only a
+  // genuinely new server counts — re-adding an existing one is a no-op.
+  if (!req.user.is_super_admin) {
+    const exists = db
+      .prepare("SELECT 1 FROM monitored_servers WHERE user_id = ? AND server_id = ?")
+      .get(req.user.id, server_id.trim());
+    if (!exists) {
+      const count = db
+        .prepare("SELECT COUNT(*) AS c FROM monitored_servers WHERE user_id = ?")
+        .get(req.user.id).c;
+      if (count >= req.dbUser.max_servers)
+        return res.status(403).json({
+          error: `Server limit reached (${req.dbUser.max_servers}). Contact an administrator to increase it.`,
+        });
+    }
+  }
+
   try {
     db.prepare("INSERT OR IGNORE INTO monitored_servers (user_id, server_id, server_name) VALUES (?, ?, ?)")
       .run(req.user.id, server_id.trim(), server_name || "Unknown Server");
@@ -80,8 +108,27 @@ router.delete("/servers/:id", async (req, res) => {
 router.post("/keywords", (req, res) => {
   const { keyword } = req.body;
   if (!keyword) return res.status(400).json({ error: "Keyword required" });
+
+  const normalized = keyword.toLowerCase().trim();
+
+  // Enforce the per-user keyword limit (super admins are unlimited).
+  if (!req.user.is_super_admin) {
+    const exists = db
+      .prepare("SELECT 1 FROM keywords WHERE user_id = ? AND keyword = ?")
+      .get(req.user.id, normalized);
+    if (!exists) {
+      const count = db
+        .prepare("SELECT COUNT(*) AS c FROM keywords WHERE user_id = ?")
+        .get(req.user.id).c;
+      if (count >= req.dbUser.max_keywords)
+        return res.status(403).json({
+          error: `Keyword limit reached (${req.dbUser.max_keywords}). Contact an administrator to increase it.`,
+        });
+    }
+  }
+
   try {
-    db.prepare("INSERT OR IGNORE INTO keywords (user_id, keyword) VALUES (?, ?)").run(req.user.id, keyword.toLowerCase().trim());
+    db.prepare("INSERT OR IGNORE INTO keywords (user_id, keyword) VALUES (?, ?)").run(req.user.id, normalized);
     // No reload needed — keywords are fetched live from DB on every message
     res.json({ success: true });
   } catch {

@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "node server/index.js",
     "start": "node server/index.js",
-    "build": "cd client && npm install && npm run build"
+    "build": "cd client && npm install && npm run build",
+    "deploy": "git pull --ff-only && npm install && npm run build && pm2 reload ecosystem.config.js --update-env && pm2 save"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

@@ -58,15 +58,45 @@ Frontend dev server: http://localhost:5173 (proxies API to :3001)
 
 ## Deployment on Windows VPS with PM2
 
+### First-time setup (run once)
 ```bash
-# Build first
+npm install
 npm run build
-
-# Start with PM2
-pm2 start server/index.js --name watchcord
+pm2 start ecosystem.config.js   # starts "watchcord" + "watchcord-tunnel"
 pm2 save
 pm2-windows-startup install
 ```
+
+> Migrating from an older `pm2 start server/index.js --name watchcord`?
+> Run `pm2 delete watchcord` (and your old tunnel app) once, then
+> `pm2 start ecosystem.config.js && pm2 save`.
+
+### Redeploying new code (no data loss, no manual restart)
+Pull the latest changes and reload in one step:
+
+```powershell
+# Windows PowerShell
+powershell -ExecutionPolicy Bypass -File .\deploy.ps1
+```
+```bash
+# or Git-Bash / Linux
+./deploy.sh
+
+# or, from anywhere npm runs:
+npm run deploy
+```
+
+This pulls from GitHub, refreshes dependencies, **rebuilds the frontend**, and
+reloads PM2. Your data is safe and untouched:
+
+- `data/monitor.db` is gitignored, so `git pull` never overwrites it.
+- Schema migrations in `server/db.js` are **idempotent** — new columns are added
+  to existing tables only if missing, and existing rows are backfilled with
+  sensible defaults. Super-admin emails are promoted automatically on boot.
+- `client/dist` is gitignored and therefore rebuilt on the server each deploy.
+
+You'll see migration confirmations in the PM2 logs (`pm2 logs watchcord`),
+e.g. `[DB] Migration: added column users.max_servers …`.
 
 ---
 

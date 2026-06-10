@@ -279,6 +279,12 @@ function attachHandlers(client, userId, serverIds, notifyChannelId) {
         content: `✉️ Welcome DM sent: ${message.slice(0, 300)}`,
       });
     } catch (err) {
+      // Discord triggered a CAPTCHA challenge — skip the DM silently.
+      if (err.message === "CAPTCHA_SOLVER_NOT_IMPLEMENTED") {
+        console.warn(`[BOT] Welcome DM skipped for ${member.user?.tag}: Discord CAPTCHA required.`);
+        addLog(userId, "warn", { content: `Welcome DM skipped for ${member.user?.tag}: Discord required a CAPTCHA (rate-limit / new account).` });
+        return;
+      }
       console.error("[BOT] Welcome error:", err.message);
       addLog(userId, "error", { content: `Welcome DM failed for ${member.user?.tag}: ${err.message}` });
     }

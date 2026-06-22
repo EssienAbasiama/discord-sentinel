@@ -1,0 +1,31 @@
+# Fly.io configuration for WatchCord.
+# App name must be globally unique — `fly launch` will adjust it if "watchcord"
+# is taken. Change primary_region to a Fly region near you if jnb isn't ideal.
+app = "watchcord"
+primary_region = "jnb"
+
+[build]
+
+[env]
+  PORT = "8080"
+
+# Public HTTPS service. auto_stop is OFF and min_machines_running = 1 so the
+# Discord/Telegram connections stay alive 24/7. Do NOT scale beyond 1 machine:
+# SQLite is a single file on a single volume, and a 2nd instance would open
+# duplicate bot connections.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+# Persistent disk for the SQLite database (server/db.js writes ../data/monitor.db
+# which resolves to /app/data/monitor.db).
+[mounts]
+  source = "data"
+  destination = "/app/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

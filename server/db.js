@@ -110,3 +110,25 @@ for (const email of SUPER_ADMIN_EMAILS) {
 
 module.exports = db;
 module.exports.SUPER_ADMIN_EMAILS = SUPER_ADMIN_EMAILS;
+
+// ── Telegram tables ───────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS telegram_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL,
+    bot_token TEXT,
+    notify_chat_id TEXT,
+    tg_bot_active INTEGER DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS telegram_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    chat_id TEXT NOT NULL,
+    chat_title TEXT,
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, chat_id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+`);

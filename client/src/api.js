@@ -39,3 +39,13 @@ export const api = {
   adminGetUsers: () => req("GET", "/admin/users"),
   adminUpdateUser: (id, body) => req("PATCH", `/admin/users/${id}`, body),
 };
+
+// Telegram API
+export const tgApi = {
+  getConfig: () => req("GET", "/telegram"),
+  saveToken: (body) => req("POST", "/telegram/token", body),
+  addGroup: (body) => req("POST", "/telegram/groups", body),
+  deleteGroup: (id) => req("DELETE", `/telegram/groups/${id}`),
+  startBot: () => req("POST", "/telegram/bot/start"),
+  stopBot: () => req("POST", "/telegram/bot/stop"),
+};

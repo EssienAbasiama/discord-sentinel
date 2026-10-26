@@ -1,15 +1,24 @@
 import { useState } from "react";
 
-export default function Overview({ data, onStart, onStop, onTabChange, toast }) {
+export default function Overview({ data, tgData, onStart, onStop, onTgStart, onTgStop, onTabChange, toast }) {
   const [starting, setStarting] = useState(false);
+  const [tgStarting, setTgStarting] = useState(false);
   const isRunning = data?.botStatus === "running";
   const isConnecting = data?.botStatus === "connecting";
   const setupComplete = data?.config?.discord_token && data?.config?.notify_channel_id && data?.servers?.length > 0;
+  const tgIsRunning = tgData?.tgBotStatus === "running";
+  const tgSetupComplete = tgData?.config?.bot_token && tgData?.config?.notify_chat_id && tgData?.groups?.length > 0;
 
   async function handleStart() {
     setStarting(true);
     try { await onStart(); } catch {}
     finally { setStarting(false); }
+  }
+
+  async function handleTgStart() {
+    setTgStarting(true);
+    try { await onTgStart(); } catch {}
+    finally { setTgStarting(false); }
   }
 
   const stats = [
@@ -74,7 +83,7 @@ export default function Overview({ data, onStart, onStop, onTabChange, toast }) 
 
         {/* Bot controls */}
         <div className="card" style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ fontFamily: "var(--font-head)", fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Bot Controls</div>
+          <div style={{ fontFamily: "var(--font-head)", fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Discord Bot Controls</div>
           <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 24, lineHeight: 1.6 }}>
             {isRunning
               ? `Your bot is active and monitoring ${data.servers.length} server(s).`
@@ -99,6 +108,36 @@ export default function Overview({ data, onStart, onStop, onTabChange, toast }) 
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Telegram bot controls */}
+      <div className="card" style={{ marginTop: 24, display: "flex", flexDirection: "column" }}>
+        <div style={{ fontFamily: "var(--font-head)", fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Telegram Bot Controls</div>
+        <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 24, lineHeight: 1.6 }}>
+          {tgIsRunning
+            ? `Your Telegram bot is active and monitoring ${tgData.groups.length} group(s).`
+            : tgSetupComplete
+            ? "Your Telegram setup is complete. Start the bot to begin monitoring."
+            : <>Add a bot token, notification chat, and at least one group before starting.{" "}
+                <button onClick={() => onTabChange(tgData?.config?.bot_token && tgData?.config?.notify_chat_id ? "tg-groups" : "tg-setup")} style={{ fontSize: 13, color: "var(--primary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                  Set up →
+                </button>
+              </>}
+        </p>
+
+        {tgIsRunning ? (
+          <button className="btn btn-danger" style={{ width: "100%", justifyContent: "center" }} onClick={onTgStop}>
+            ⏹ Stop Telegram Bot
+          </button>
+        ) : (
+          <button className="btn btn-success" style={{ width: "100%", justifyContent: "center" }}
+            disabled={!tgSetupComplete || tgStarting} onClick={handleTgStart}>
+            {tgStarting ? <><span className="spinner" /> Connecting...</> : "▶ Start Telegram Bot"}
+          </button>
+        )}
+        <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 10 }}>
+          {tgIsRunning ? "Stop to pause Telegram monitoring" : "Bot will connect to Telegram on start"}
+        </p>
       </div>
     </div>
   );

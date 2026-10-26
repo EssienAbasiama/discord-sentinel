@@ -1,26 +1,36 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, tgApi } from "../api";
 import Overview from "../components/Overview";
 import TokenSetup from "../components/TokenSetup";
 import ServerManager from "../components/ServerManager";
 import KeywordManager from "../components/KeywordManager";
 import LogsPanel from "../components/LogsPanel";
+import TelegramSetup from "../components/TelegramSetup";
+import TelegramGroupManager from "../components/TelegramGroupManager";
 import AdminPanel from "../components/AdminPanel";
 
 const NAV = [
   { id: "overview", label: "Overview", icon: "◈" },
+  { id: "divider-discord", divider: true, label: "Discord" },
   { id: "setup", label: "Bot Setup", icon: "⚙" },
   { id: "servers", label: "Servers", icon: "🏠" },
   { id: "keywords", label: "Keywords", icon: "🔍" },
+  { id: "divider-telegram", divider: true, label: "Telegram" },
+  { id: "tg-setup", label: "TG Bot Setup", icon: "✈️" },
+  { id: "tg-groups", label: "TG Groups", icon: "💬" },
+  { id: "divider-other", divider: true, label: "Other" },
   { id: "logs", label: "Logs", icon: "📋" },
 ];
+
+const statusDot = (status) => status === "running" ? "dot-green" : status === "connecting" ? "dot-amber" : "dot-red";
 
 const ADMIN_NAV = { id: "admin", label: "User Management", icon: "👥" };
 
 export default function Dashboard() {
   const [tab, setTab] = useState("overview");
   const [data, setData] = useState(null);
+  const [tgData, setTgData] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const nav = useNavigate();
@@ -34,8 +44,9 @@ export default function Dashboard() {
 
   const load = useCallback(async () => {
     try {
-      const d = await api.getConfig();
+      const [d, tg] = await Promise.all([api.getConfig(), tgApi.getConfig()]);
       setData(d);
+      setTgData(tg);
       // Keep the cached user's admin flag fresh in case it changed server-side.
       if (typeof d.isSuperAdmin === "boolean") {
         const stored = JSON.parse(localStorage.getItem("wc_user") || "{}");
@@ -48,12 +59,12 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh every 10s when bot is running
+  // Auto-refresh every 10s when either bot is running
   useEffect(() => {
-    if (data?.botStatus !== "running") return;
+    if (data?.botStatus !== "running" && tgData?.tgBotStatus !== "running") return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
-  }, [data?.botStatus, load]);
+  }, [data?.botStatus, tgData?.tgBotStatus, load]);
 
   function logout() {
     localStorage.clear();
@@ -66,13 +77,14 @@ export default function Dashboard() {
   }
 
   const setupComplete = data?.config?.discord_token && data?.config?.notify_channel_id && data?.servers?.length > 0;
+  const tgSetupComplete = tgData?.config?.bot_token && tgData?.config?.notify_chat_id && tgData?.groups?.length > 0;
 
   // Super-admin status comes fresh from the config response; fall back to the
   // value stored at login so the nav doesn't flash before data loads.
   const isSuperAdmin = data?.isSuperAdmin ?? user.is_super_admin ?? false;
   const navItems = isSuperAdmin ? [...NAV, ADMIN_NAV] : NAV;
 
-  const statusClass = data?.botStatus === "running" ? "dot-green" : data?.botStatus === "connecting" ? "dot-amber" : "dot-red";
+  const statusClass = statusDot(data?.botStatus);
 
   return (
     <div className="dash-layout">
@@ -91,18 +103,27 @@ export default function Dashboard() {
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>@{user.username}</div>
         </div>
 
-        {/* Bot status pill */}
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)" }}>
-            <span className={`dot ${statusClass}`} />
-            <span style={{ fontSize: 13, color: "var(--text-dim)", fontWeight: 500 }}>
-              {data?.botStatus === "running" ? "Bot Running" : data?.botStatus === "connecting" ? "Connecting..." : "Bot Stopped"}
-            </span>
-          </div>
+        {/* Bot status pills */}
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
+          {[
+            { label: "Discord", status: data?.botStatus },
+            { label: "Telegram", status: tgData?.tgBotStatus },
+          ].map(({ label, status }) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)" }}>
+              <span className={`dot ${statusDot(status)}`} />
+              <span style={{ fontSize: 13, color: "var(--text-dim)", fontWeight: 500 }}>
+                {label}: {status === "running" ? "Running" : status === "connecting" ? "Connecting..." : "Stopped"}
+              </span>
+            </div>
+          ))}
         </div>
 
         <nav style={{ flex: 1, padding: "12px 12px" }}>
-          {navItems.map(n => (
+          {navItems.map(n => n.divider ? (
+            <div key={n.id} style={{ padding: "12px 12px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-muted)", textTransform: "uppercase" }}>
+              {n.label}
+            </div>
+          ) : (
             <button key={n.id} onClick={() => handleNavClick(n.id)}
               style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%",
@@ -116,7 +137,7 @@ export default function Dashboard() {
               onMouseLeave={e => { if (tab !== n.id) e.currentTarget.style.background = "transparent"; }}>
               <span style={{ fontSize: 16 }}>{n.icon}</span>
               {n.label}
-              {n.id === "setup" && !setupComplete && (
+              {((n.id === "setup" && !setupComplete) || (n.id === "tg-setup" && !tgSetupComplete)) && (
                 <span style={{ marginLeft: "auto", width: 7, height: 7, background: "var(--amber)", borderRadius: "50%", flexShrink: 0 }} />
               )}
             </button>
@@ -145,14 +166,14 @@ export default function Dashboard() {
 
         {/* Main content */}
         <main className="dash-main">
-          {!data ? (
+          {!data || !tgData ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300 }}>
               <span className="spinner" style={{ width: 32, height: 32 }} />
             </div>
           ) : (
             <>
-              {/* Setup prompt if incomplete */}
-              {!setupComplete && tab !== "setup" && (
+              {/* Setup prompt if incomplete (Discord-specific, so hidden on Telegram pages) */}
+              {!setupComplete && tab !== "setup" && !tab.startsWith("tg-") && (
                 <div className="fade-up" style={{ background: "var(--amber-dim)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 12, padding: "14px 20px", marginBottom: 28, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 20 }}>⚠️</span>
@@ -167,10 +188,17 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {tab === "overview" && <Overview data={data} onStart={() => api.startBot().then(load).catch(e => toast(e.message, "error"))} onStop={() => api.stopBot().then(load)} onTabChange={setTab} toast={toast} />}
+              {tab === "overview" && <Overview data={data} tgData={tgData}
+                onStart={() => api.startBot().then(load).catch(e => toast(e.message, "error"))}
+                onStop={() => api.stopBot().then(load)}
+                onTgStart={() => tgApi.startBot().then(load).catch(e => toast(e.message, "error"))}
+                onTgStop={() => tgApi.stopBot().then(load)}
+                onTabChange={setTab} toast={toast} />}
               {tab === "setup" && <TokenSetup config={data.config} onSave={async (body) => { await api.saveToken(body); toast("Token saved!"); load(); }} toast={toast} />}
               {tab === "servers" && <ServerManager servers={data.servers} onAdd={async (s) => { await api.addServer(s); toast("Server added!"); load(); }} onDelete={async (id) => { await api.deleteServer(id); toast("Server removed"); load(); }} toast={toast} />}
               {tab === "keywords" && <KeywordManager keywords={data.keywords} onAdd={async (k) => { await api.addKeyword(k); toast("Keyword added!"); load(); }} onDelete={async (id) => { await api.deleteKeyword(id); toast("Keyword removed"); load(); }} />}
+              {tab === "tg-setup" && <TelegramSetup config={tgData.config} onSave={async (body) => { await tgApi.saveToken(body); toast("Telegram settings saved!"); load(); }} toast={toast} />}
+              {tab === "tg-groups" && <TelegramGroupManager groups={tgData.groups} onAdd={async (g) => { await tgApi.addGroup(g); toast("Group added!"); load(); }} onDelete={async (id) => { await tgApi.deleteGroup(id); toast("Group removed"); load(); }} toast={toast} />}
               {tab === "logs" && <LogsPanel />}
               {tab === "admin" && isSuperAdmin && <AdminPanel toast={toast} />}
             </>
